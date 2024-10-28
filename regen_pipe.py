@@ -262,6 +262,7 @@ class ReSD3Pipeline(StableDiffusion3Pipeline):
             height: Optional[int] = None,
             width: Optional[int] = None,
             num_inference_steps: int = 28,
+            timesteps:List[int] = None,
             guidance_scale: float = 7.0,
             negative_prompt: Optional[Union[str, List[str]]] = None,
             negative_prompt_2: Optional[Union[str, List[str]]] = None,
@@ -404,6 +405,7 @@ class ReSD3Pipeline(StableDiffusion3Pipeline):
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
+
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
@@ -437,7 +439,6 @@ class ReSD3Pipeline(StableDiffusion3Pipeline):
                 if not head_start_step or i >= head_start_step:  # if there is no head start or we reached the hs step
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t) # 根据当前timestep对latents调整
                     timestep = t.expand(latent_model_input.shape[0])
                     
                     # predict the noise residual，不同于stable-diffusion-2使用的unet

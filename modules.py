@@ -25,14 +25,14 @@ def add_watermark(wm_name, wmarker, data_path):
     print(f'Finished watermarking with {wm_name}')
     
 
-def attack_wm(wm_name, att_name, wm_attacker, data_path):
+def attack_wm(att_name, wm_attacker, data_path, wm_name=None):
     print(f'Attacking images...')
     if wm_name is not None:
         wm_paths = glob.glob(os.path.join(data_path, wm_name, 'noatt/*.*'))
         wm_paths = path_filter(wm_paths)
         output_path = os.path.join(data_path, wm_name, att_name)
     else:
-        wm_paths = glob.glob(os.path.join(data_path, 'ori_imgs/*.*'))
+        wm_paths = glob.glob(os.path.join(data_path, 'stable_sig/*.*'))
         wm_paths = path_filter(wm_paths)
         output_path = os.path.join(data_path, att_name)
     

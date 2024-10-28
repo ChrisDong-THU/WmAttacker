@@ -152,6 +152,17 @@ class CropAttacker(WMAttacker):
             img.save(out_path)
 
 
+def add_noise(sigmas, latents, t, noise):
+    sigmas = sigmas.to(device=latents.device, dtype=latents.dtype)
+    sigma = sigmas[t].flatten()
+
+    while len(sigma.shape) < len(latents.shape):
+        sigma = sigma.unsqueeze(-1)
+
+    latents = sigma * noise + (1.0 - sigma) * latents
+    return latents
+
+
 class DiffWMAttacker(WMAttacker):
     def __init__(self, pipe, batch_size=20, noise_step=60, captions={}):
         self.pipe = pipe # 预训练的diffusion模型
@@ -159,6 +170,7 @@ class DiffWMAttacker(WMAttacker):
         self.device = pipe.device
         self.noise_step = noise_step
         self.captions = captions
+        
         print(f'Diffuse attack initialized with noise step {self.noise_step} and use prompt {len(self.captions)}')
 
     def attack(self, image_paths, out_paths, return_latents=False, return_dist=False):
@@ -177,7 +189,9 @@ class DiffWMAttacker(WMAttacker):
                                    head_start_latents=latents, # 加入攻击噪声后的latents
                                    head_start_step=50 - max(self.noise_step // 20, 1), # 默认num_inference_steps=50，减去加入攻击噪声已用的denoise步数，从此步继续denoise
                                    guidance_scale=7.5, # > 1.0，使用classifier_free_guidance
-                                   generator=generator, )
+                                   generator=generator, 
+                                   num_inference_steps = self.num_inference_steps,
+                                   )
                 images = images[0]
                 # 重建的图像保存到outs_buf
                 for img, out in zip(images, outs_buf):
@@ -232,12 +246,13 @@ class DiffWMAttacker(WMAttacker):
             
 
 class Diff3WMAttacker(WMAttacker):
-    def __init__(self, pipe, batch_size=20, noise_step=40, captions={}):
+    def __init__(self, pipe, batch_size=20, noise_step=None, num_inference_steps=None, captions={}):
         self.pipe = pipe # 预训练的diffusion模型
         self.BATCH_SIZE = batch_size
         self.device = pipe.device
         self.noise_step = noise_step
         self.captions = captions
+        self.num_inference_steps = num_inference_steps
         print(f'Diffuse attack initialized with noise step {self.noise_step} and use prompt {len(self.captions)}')
 
     def attack(self, image_paths, out_paths, return_latents=False, return_dist=False):
@@ -246,7 +261,7 @@ class Diff3WMAttacker(WMAttacker):
             latents_buf = []
             prompts_buf = []
             outs_buf = []
-            timestep = torch.tensor([self.noise_step], dtype=torch.long, device=self.device) # 攻击噪声加入的denoise步数
+
             ret_latents = []
 
             def batched_attack(latents_buf, prompts_buf, outs_buf):
@@ -255,6 +270,7 @@ class Diff3WMAttacker(WMAttacker):
                 images = self.pipe(prompts_buf,
                                    head_start_latents=latents, # 加入攻击噪声后的latents
                                    head_start_step=28 - max(self.noise_step // 20, 1), # 默认num_inference_steps=50，减去加入攻击噪声已用的denoise步数，从此步继续denoise
+                                #    head_start_step=28,
                                    guidance_scale=7.0, # > 1.0，使用classifier_free_guidance
                                    generator=generator, )
                 images = images[0]
@@ -274,6 +290,11 @@ class Diff3WMAttacker(WMAttacker):
             else:
                 prompts = [""] * len(image_paths)
 
+            timesteps = np.linspace(1, self.num_inference_steps, self.num_inference_steps, dtype=np.float32)[::-1].copy()
+            timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
+            sigmas = timesteps / self.num_inference_steps
+
+
             for (img_path, out_path), prompt in tqdm(zip(zip(image_paths, out_paths), prompts)):
                 img = Image.open(img_path)
                 img = np.asarray(img) / 255
@@ -284,12 +305,9 @@ class Diff3WMAttacker(WMAttacker):
                 latents = self.pipe.vae.encode(img).latent_dist # 此处stable-diffusion-3与stable-diffusion-2用法相同
                 latents = latents.sample(generator) * self.pipe.vae.config.scaling_factor # 从分布中采样，并scale
                 
-                noise = torch.randn([1, 4, img.shape[-2] // 8, img.shape[-1] // 8], device=self.device) # 对应vae下采样8倍latens生成攻击噪声
-                if return_dist:
-                    return self.pipe.scheduler.add_noise(latents, noise, timestep, return_dist=True)
-                
-                # 此处stable-diffusion-3与stable-diffusion-2用法相同
-                latents = self.pipe.scheduler.add_noise(latents, noise, timestep).type(torch.half) # 攻击噪声经timestep步denoise加入latents，生成新的latents
+                chs = latents.shape[1]
+                noise = torch.randn([1, chs, img.shape[-2] // 8, img.shape[-1] // 8], device=self.device, dtype=latents.dtype) # 对应vae下采样8倍latens生成攻击噪声
+                latents = add_noise(sigmas, latents, self.noise_step, noise)
                 latents_buf.append(latents)
                 outs_buf.append(out_path)
                 prompts_buf.append(prompt)
