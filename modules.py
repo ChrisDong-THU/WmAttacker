@@ -1,24 +1,33 @@
 import os
 import glob
 import random
+import shutil
 
 
 def path_filter(path, exts=('.jpg', '.jpeg', '.png', '.bmp', '.gif')):
     return sorted([path for path in path if path.lower().endswith(exts)])
 
 
-def sample_image_path(folder_name, num):
-    files = glob.glob(os.path.join(folder_name, '*.*'))
+def sample_image_path(folder, output_folder, num):
+    files = glob.glob(os.path.join(folder, '*.*'))
     files = path_filter(files)
     files = random.sample(files, num)
+    
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    print(f'Copying {num} images to {output_folder}...')
+    for file_path in files:
+        file_name = os.path.basename(file_path)
+        target_path = os.path.join(output_folder, file_name)
+        shutil.copy(file_path, target_path)
     
     return files
 
 
 def add_watermark(wm_name='fusion1', wmarker_list=[], data_path=None, num=300):
     print(f'Watermarking with {wm_name}...')
-    ori_path = os.path.join(data_path, 'ori_imgs/')
-    ori_paths = sample_image_path(ori_path, num)
+    ori_paths = glob.glob(os.path.join(data_path, 'ori_imgs/*.*'))
     
     output_path = os.path.join(data_path, wm_name + '/noatt')
     if os.path.exists(output_path) and os.listdir(output_path):
