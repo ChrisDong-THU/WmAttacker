@@ -2,7 +2,32 @@ import torch
 import torchvision.transforms as transforms
 import PIL.Image as Image
 
-
+def pca_svd(matrix, num_pc=100):
+    # 将矩阵展平成二维 (C, H*W)
+    C, H, W = matrix.shape
+    matrix_flat = matrix.view(C, -1)
+    
+    # 减去每个通道的均值
+    matrix_mean = torch.mean(matrix_flat, dim=1, keepdim=True)
+    norm_matrix = matrix_flat - matrix_mean
+    
+    # 计算 SVD
+    U, S, Vh = torch.linalg.svd(norm_matrix, full_matrices=False)
+    
+    # 选择前 num_pc 个主成分
+    U_reduced = U[:, :num_pc]
+    S_reduced = S[:num_pc]
+    Vh_reduced = Vh[:num_pc, :]
+    
+    # 重建矩阵
+    rec_matrix_flat = (U_reduced * S_reduced) @ Vh_reduced
+    rec_matrix_flat += matrix_mean
+    
+    # 恢复原始形状
+    rec_matrix = rec_matrix_flat.view(C, H, W)
+    
+    return rec_matrix
+# ----------
 def pca_2d_ch(matrix, num_pc=512):
     matrix_mean = torch.mean(matrix)
     norm_matrix = matrix - matrix_mean

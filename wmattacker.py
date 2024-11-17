@@ -10,7 +10,7 @@ from tqdm import tqdm
 from bm3d import bm3d_rgb
 from compressai.zoo import bmshj2018_factorized, bmshj2018_hyperprior, mbt2018_mean, mbt2018, cheng2020_anchor
 
-from pca_module import pca_2d
+from pca_module import pca_3d, pca_svd
 
 
 class WMAttacker:
@@ -189,7 +189,7 @@ class DiffWMAttacker(WMAttacker):
                 # 图像重建：prompts_buf + latens_buf -> images
                 images = self.pipe(prompts_buf,
                                    head_start_latents=latents, # 加入攻击噪声后的latents
-                                   head_start_step=49, # 默认num_inference_steps=50，减去加入攻击噪声已用的denoise步数，从此步继续denoise
+                                   head_start_step=50-2, # 默认num_inference_steps=50，减去加入攻击噪声已用的denoise步数，从此步继续denoise
                                    guidance_scale=7.5, # > 1.0，使用classifier_free_guidance
                                    generator=generator, 
                                    num_inference_steps=50, # 默认50步denoise
@@ -221,12 +221,13 @@ class DiffWMAttacker(WMAttacker):
                 latents = self.pipe.vae.encode(img).latent_dist # latens分布
                 latents = latents.sample(generator) * self.pipe.vae.config.scaling_factor # 从分布中采样，并scale, [1, 4, 64, 64]
                 
-                # noise = torch.randn([1, 4, img.shape[-2] // 8, img.shape[-1] // 8], device=self.device) # 对应vae下采样8倍latens生成攻击噪声
-                # if return_dist:
-                #     return self.pipe.scheduler.add_noise(latents, noise, timestep, return_dist=True)
-                # latents = self.pipe.scheduler.add_noise(latents, noise, timestep).type(torch.half) # 攻击噪声经timestep步denoise加入latents，生成新的latents
-                
-                latents = pca_2d(latents[0].to(torch.float32), 60).unsqueeze(0).to(torch.half)
+                #latents = pca_3d(latents[0].to(torch.float32), 100).unsqueeze(0).to(torch.half)
+                latents = pca_svd(latents[0].to(torch.float32), num_pc=150).unsqueeze(0).to(torch.half)
+
+                noise = torch.randn([1, 4, img.shape[-2] // 8, img.shape[-1] // 8], device=self.device) # 对应vae下采样8倍latens生成攻击噪声
+                if return_dist:
+                    return self.pipe.scheduler.add_noise(latents, noise, timestep, return_dist=True)
+                latents = self.pipe.scheduler.add_noise(latents, noise, timestep).type(torch.half) # 攻击噪声经timestep步denoise加入latents，生成新的latents
                 
                 latents_buf.append(latents)
                 outs_buf.append(out_path)

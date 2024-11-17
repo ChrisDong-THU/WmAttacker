@@ -57,7 +57,7 @@ def attack_wm(att_name, wm_attacker, data_path, wm_name=None):
         wm_paths = path_filter(wm_paths)
         output_path = os.path.join(data_path, wm_name, att_name)
     else:
-        wm_paths = glob.glob(os.path.join(data_path, 'ori_imgs/*.*'))
+        wm_paths = glob.glob(os.path.join(data_path, 'diff-psn-de10-de2/*.*'))
         wm_paths = path_filter(wm_paths)
         output_path = os.path.join(data_path, att_name)
     
